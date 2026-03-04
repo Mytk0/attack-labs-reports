@@ -70,9 +70,3 @@ No real-world systems or organizations are involved.
 The purpose of this repository is educational and professional development.
 
 ---
-
-## Author
-
-Mytk0  
-Active Directory Engineer | Offensive Security  
-CPTS | CRTO (In progress)
