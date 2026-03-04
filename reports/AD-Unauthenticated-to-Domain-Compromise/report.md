@@ -510,8 +510,8 @@ With replication rights in place, `secretsdump` was used to perform a DCSync att
 ## 8. Appendix
 
 ### A — BloodHound Attack Path
-![Bloodhound_Attack_Path](image/bloodhound_start.png)
-![BloodHound Attack Path](images/bloodhound_1.png)
+![Bloodhound_Attack_Path](images/bloodhoundpath_start.png)
+![BloodHound Attack Path](images/bloodhoundpath_1.png)
 
 *Figure 1,2: BloodHound graph showing the privilege escalation path from svc-alfresco to domain compromise via Exchange Windows Permissions WriteDACL abuse.*
 
