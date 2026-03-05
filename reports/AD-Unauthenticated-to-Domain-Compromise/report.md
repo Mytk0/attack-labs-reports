@@ -359,7 +359,7 @@ Possession of these rights allows any account to perform a DCSync attack, direct
 | Field | Detail |
 |-------|--------|
 | **Severity** | Critical |
-| **CVSS v3.1 Score** | 10.0 |
+| **CVSS v3.1 Score** | 9.9 |
 | **CVSS Vector** | `AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:H/A:H` |
 | **Affected Asset** | Active Directory Domain — All Accounts |
 | **MITRE ATT&CK** | [T1003.006](https://attack.mitre.org/techniques/T1003/006/) — OS Credential Dumping: DCSync |
