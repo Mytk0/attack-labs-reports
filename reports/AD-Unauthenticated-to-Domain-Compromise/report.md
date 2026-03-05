@@ -346,9 +346,9 @@ Possession of these rights allows any account to perform a DCSync attack, direct
 - Audit the domain object ACL and remove any non-DC accounts holding replication rights:
   ```powershell
   (Get-Acl "AD:\DC=<domain>,DC=<tld>").Access | Where-Object {
-    $_.ActiveDirectoryRights -match "ExtendedRight" -and
-    $_.ObjectType -match "1131f6aa|1131f6ad"
-  }
+  $_.ActiveDirectoryRights -match "ExtendedRight" -and
+  $_.ObjectType -match "1131f6aa-9c07-11d1-f79f-00c04fc2dcd2|1131f6ad-9c07-11d1-f79f-00c04fc2dcd2|1131f6a0-9c07-11d1-f79f-00c04fc2dcd2" }
+  | Select-Object IdentityReference, ActiveDirectoryRights, ObjectType
   ```
 - Alert on `EventID 4662` for replication rights changes on the domain object
 
