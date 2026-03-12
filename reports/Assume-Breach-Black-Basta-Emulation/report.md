@@ -19,18 +19,18 @@
 3. [Methodology](#3-methodology)
 4. [Attack Chain Overview](#4-attack-chain-overview)
 5. [Findings](#5-findings)
-   - [FIND-01 · AD CS Misconfiguration - ESC1 (Vulnerable Certificate Template)](#find-01--ad-cs-misconfiguration--esc1-vulnerable-certificate-template)
-   - [FIND-02 · Credentials Exposed in World-Readable Network Share](#find-02--credentials-exposed-in-world-readable-network-share)
-   - [FIND-03 · Constrained Delegation with Protocol Transition - svc_sql](#find-03--constrained-delegation-with-protocol-transition--svc_sql)
-   - [FIND-04 · GPO Misconfiguration - Excessive Edit Rights on Workstation Policy](#find-04--gpo-misconfiguration--excessive-edit-rights-on-workstation-policy)
-   - [FIND-05 · Full Domain Compromise via DCSync](#find-05--full-domain-compromise-via-dcsync)
+   - [FIND-01 - AD CS Misconfiguration - ESC1 (Vulnerable Certificate Template)](#find-01---ad-cs-misconfiguration---esc1-vulnerable-certificate-template)
+   - [FIND-02 - Credentials Exposed in World-Readable Network Share](#find-02---credentials-exposed-in-world-readable-network-share)
+   - [FIND-03 - Constrained Delegation with Protocol Transition - svc_sql](#find-03---constrained-delegation-with-protocol-transition---svc_sql)
+   - [FIND-04 - GPO Misconfiguration - Excessive Edit Rights on Workstation Policy](#find-04---gpo-misconfiguration---excessive-edit-rights-on-workstation-policy)
+   - [FIND-05 - Full Domain Compromise via DCSync](#find-05---full-domain-compromise-via-dcsync)
 6. [Technical Narrative](#6-technical-narrative)
-   - [Phase 1 - Initial Access & Reconnaissance](#phase-1--initial-access--reconnaissance)
-   - [Phase 2 - AD CS Enumeration & ESC1 Exploitation (Path A)](#phase-2--ad-cs-enumeration--esc1-exploitation-path-a)
-   - [Phase 3 - Domain Compromise via DCSync](#phase-3--domain-compromise-via-dcsync)
-   - [Phase 4 - GPO Abuse & Lateral Movement (Path B)](#phase-4--gpo-abuse--lateral-movement-path-b)
-   - [Phase 5 - Constrained Delegation Abuse](#phase-5--constrained-delegation-abuse)
-   - [Phase 6 - Impact Simulation](#phase-6--impact-simulation)
+   - [Phase 1 - Initial Access & Reconnaissance](#phase-1---initial-access--reconnaissance)
+   - [Phase 2 - AD CS Enumeration & ESC1 Exploitation (Path A)](#phase-2---ad-cs-enumeration--esc1-exploitation-path-a)
+   - [Phase 3 - Domain Compromise via DCSync](#phase-3---domain-compromise-via-dcsync)
+   - [Phase 4 - GPO Abuse & Lateral Movement (Path B)](#phase-4---gpo-abuse--lateral-movement-path-b)
+   - [Phase 5 - Constrained Delegation Abuse](#phase-5---constrained-delegation-abuse)
+   - [Phase 6 - Impact Simulation](#phase-6---impact-simulation)
 7. [MITRE ATT&CK Mapping](#7-mitre-attck-mapping)
 8. [Remediation Summary](#8-remediation-summary)
 9. [Appendix](#9-appendix)
@@ -149,7 +149,7 @@ Impact (T1490, T1048)
 
 ---
 
-### FIND-01 · AD CS Misconfiguration - ESC1 (Vulnerable Certificate Template)
+### FIND-01 - AD CS Misconfiguration - ESC1 (Vulnerable Certificate Template)
 
 | Field | Detail |
 |---|---|
@@ -230,7 +230,7 @@ A low-privilege domain account was used to obtain Domain Administrator credentia
 
 ---
 
-### FIND-02 · Credentials Exposed in World-Readable Network Share
+### FIND-02 - Credentials Exposed in World-Readable Network Share
 
 | Field | Detail |
 |---|---|
@@ -289,7 +289,7 @@ Plaintext credentials stored in an accessible network location represent a criti
 
 ---
 
-### FIND-03 · Constrained Delegation with Protocol Transition - svc_sql
+### FIND-03 - Constrained Delegation with Protocol Transition - svc_sql
 
 | Field | Detail |
 |---|---|
@@ -363,7 +363,7 @@ Protocol Transition delegation removes the requirement for a user to have authen
 
 ---
 
-### FIND-04 · GPO Misconfiguration - Excessive Edit Rights on Workstation Policy
+### FIND-04 - GPO Misconfiguration - Excessive Edit Rights on Workstation Policy
 
 | Field | Detail |
 |---|---|
@@ -431,7 +431,7 @@ Group Policy is one of the most powerful administrative mechanisms in Active Dir
 
 ---
 
-### FIND-05 · Full Domain Compromise via DCSync
+### FIND-05 - Full Domain Compromise via DCSync
 
 | Field | Detail |
 |---|---|
