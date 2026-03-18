@@ -10,6 +10,8 @@
 | **Report Status** | Final |
 | **Assessor** | Mytk0 |
 
+> 📄 **Full report:** A professionally formatted 20 page PDF version of this report is available for view/download [here](./Kerberoast_ADCS_DomainComp.pdf).
+
 ---
 
 ## Table of Contents
