@@ -95,19 +95,6 @@ detection improvement after Phase 1 remediations are applied.
 | **Target** | | | **>80%** | |
 ---
 
-## Lab Environment
-
-**Hypervisor:** Proxmox VE 9.1 on Dell T320
-**Network:** Isolated 10.10.10.0/24 (vmbr1) routed via pfSense
-**Domain:** corp.local
-**Domain Controller:** Windows Server 2022 with AD CS Enterprise Root CA
-**Endpoints:** Windows 11 Pro 25H2 (WIN11-01, WIN11-02)
-**SIEM:** Wazuh 4.14.4 (single-node AIO)
-**Endpoint Logging:** Sysmon v15.20 with sysmon-modular config
-**Federation:** Windows Server 2022 ADFS
-**Mail:** hMailServer + GoPhish on Windows Server 2022
-**Attack Platform:** Kali Linux on Hyper-V, connected via SSH SOCKS5 proxychains
-
 ## Disclaimer
 
 This work is conducted in a fully isolated lab for personal learning, defensive research, and skill development. All attack execution is performed against systems owned and operated by the author. The TTPs documented map to public threat intelligence (MITRE ATT&CK G0016, CISA advisories) and are presented for defender education.
